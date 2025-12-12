@@ -9,6 +9,17 @@ import Foundation
 import Playgrounds
 import FoundationModels
 
+/// Simple Usage
+
+#Playground {
+    let session = LanguageModelSession()
+    let response = try await session.respond(to: "Generate a riddle")
+    print(response.content)
+}
+
+/// As we seen in the above simple example response from the LLM is string, which we need to parse ourself, without that overhead if we already know the response format we can use Generable macro
+/// @Guide description is the hint for the LLM that what this variable represents
+/// @Guide count is used to generate partocular numbur of examples
 @Generable
 struct StatementSummary {
     @Guide(description: "Credit card statement summary")
@@ -16,6 +27,12 @@ struct StatementSummary {
     @Guide(description: "Followup questions that user can ask")
     @Guide(.count(5))
     var followUpQuestions: [String]
+}
+
+extension StatementSummary {
+    static func example() -> Self {
+        StatementSummary(summary: "You spend $500 on groceries, $300 on dining out, and $200 on groceries. Your spending is higher on the first week of the month and you are paying off a $1000 debt.", followUpQuestions: ["How can save money?", "Are there any intrest on the account?", "How much I am spending for entertainment?"])
+    }
 }
 
 let userStatement = """
@@ -148,8 +165,10 @@ let userStatement = """
 }
 """
 
+// Structured output
+
 #Playground {
-    /*
+    
     let session = LanguageModelSession {
         "Your job is to summarize the credit spending for the given statement."
         
@@ -163,9 +182,9 @@ let userStatement = """
         StatementSummary.example()
         
     }
-    */
     
-    /*
+    
+    
     do {
         let response = try await session.respond(generating: StatementSummary.self) {
             "Summarize the user spending for the given statement"
@@ -175,54 +194,15 @@ let userStatement = """
     } catch {
         print(error.localizedDescription)
         
-    }*/
-    
-    // Dynamic schema
-    let dynamicSchema = DynamicGenerationSchema(name: "creditCardStatement", description: "Financial advisor adheres to user's needs and specifications", properties: [
-        DynamicGenerationSchema.Property(name: "Summary",description: "Summarise user spending habits", schema: DynamicGenerationSchema(type: String.self)),
-        DynamicGenerationSchema.Property(name: "Categories", description: "Divide transactions into categories", schema: DynamicGenerationSchema(type: [CategoryModel].self))
-    ])
-    
-    let sessionForDynamicSchema: LanguageModelSession = LanguageModelSession {
-        "Your job is to summarize the credit spending for the given statement."
-        
-       // "Do not hallucinate or make up information. Focus on the actual spending patterns. If possible provide the category of each expense other wise put it inside other category"
     }
-    
-    let dynamicResponse = try await sessionForDynamicSchema.respond(schema: GenerationSchema(root: dynamicSchema, dependencies: [])) {
-        "Generate a credit card statement summary and categorize transactions"
-        userStatement
-    }
-    let generatedContent = dynamicResponse.content
-    let summary = try generatedContent.value(String.self, forProperty: "Summary")
-    let categories = try generatedContent.value([CategoryModel].self, forProperty: "Categories")
-    
-    // Tool calling
-    let toolCallingSession = LanguageModelSession(tools: [StatementsTool()]) {
-        "Your job is to summarize the credit spending for the given statement."
-        
-        "Do not hallucinate or make up information. Focus on the actual spending patterns. If possible provide the category of each expense other wise put it inside other category"
-    }
-    
-    let toolCallResponse = try await toolCallingSession.respond(schema: GenerationSchema(root: dynamicSchema, dependencies: [])) {
-        "Generate a credit card statement summary and categorize transactions for Nov 2025"
-    }
-    
-    let generatedContentForTollCalling = dynamicResponse.content
-    let summaryToolCalling = try generatedContent.value(String.self, forProperty: "Summary")
-    let categoriesToolCalling = try generatedContent.value([CategoryModel].self, forProperty: "Categories")
 }
+
+/// If we donot know the structure of the response at compile time, we can use the DynamicGenerationSchema
 
 @Generable
 enum Category: String, CaseIterable, Codable, Identifiable {
     case groceries, diningOut, entertainment, utilities, other
     var id: String { rawValue }
-}
-
-extension StatementSummary {
-    static func example() -> Self {
-        StatementSummary(summary: "You spend $500 on groceries, $300 on dining out, and $200 on groceries. Your spending is higher on the first week of the month and you are paying off a $1000 debt.", followUpQuestions: ["How can save money?", "Are there any intrest on the account?", "How much I am spending for entertainment?"])
-    }
 }
 
 // Tool calling
@@ -242,6 +222,51 @@ struct Transactions: Codable, Identifiable {
     var date: String
 }
 
+#Playground {
+    // Dynamic schema
+    let dynamicSchema = DynamicGenerationSchema(name: "creditCardStatement", description: "Financial advisor adheres to user's needs and specifications", properties: [
+        DynamicGenerationSchema.Property(name: "Summary",description: "Summarise user spending habits", schema: DynamicGenerationSchema(type: String.self)),
+        DynamicGenerationSchema.Property(name: "Categories", description: "Divide transactions into categories", schema: DynamicGenerationSchema(type: [CategoryModel].self))
+    ])
+    
+    let sessionForDynamicSchema: LanguageModelSession = LanguageModelSession {
+        "Your job is to summarize the credit spending for the given statement."
+        
+       // "Do not hallucinate or make up information. Focus on the actual spending patterns. If possible provide the category of each expense other wise put it inside other category"
+    }
+    
+    let dynamicResponse = try await sessionForDynamicSchema.respond(schema: GenerationSchema(root: dynamicSchema, dependencies: [])) {
+        "Generate a credit card statement summary and categorize transactions"
+        userStatement
+    }
+    let generatedContent = dynamicResponse.content
+    let summary = try generatedContent.value(String.self, forProperty: "Summary")
+    let categories = try generatedContent.value([CategoryModel].self, forProperty: "Categories")
+}
+    
+    
+#Playground {
+    // Tool calling
+    let dynamicSchema = DynamicGenerationSchema(name: "creditCardStatement", description: "Financial advisor adheres to user's needs and specifications", properties: [
+        DynamicGenerationSchema.Property(name: "Summary",description: "Summarise user spending habits", schema: DynamicGenerationSchema(type: String.self)),
+        DynamicGenerationSchema.Property(name: "Categories", description: "Divide transactions into categories", schema: DynamicGenerationSchema(type: [CategoryModel].self))
+    ])
+    
+    let toolCallingSession = LanguageModelSession(tools: [StatementsTool()]) {
+        "Your job is to summarize the credit spending for the given statement."
+        
+        "Do not hallucinate or make up information. Focus on the actual spending patterns. If possible provide the category of each expense other wise put it inside other category"
+    }
+    
+    let toolCallResponse = try await toolCallingSession.respond(schema: GenerationSchema(root: dynamicSchema, dependencies: [])) {
+        "Generate a credit card statement summary and categorize transactions for Nov 2025"
+    }
+    
+    let generatedContentForTollCalling = toolCallResponse.content
+    let summaryToolCalling = try generatedContentForTollCalling.value(String.self, forProperty: "Summary")
+    let categoriesToolCalling = try generatedContentForTollCalling.value([CategoryModel].self, forProperty: "Categories")
+}
+
 @MainActor
 struct StatementsTool: Tool {
     let name = "getStatements"
@@ -258,4 +283,3 @@ struct StatementsTool: Tool {
         userStatement
     }
 }
-
